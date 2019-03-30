@@ -1,6 +1,6 @@
 function dataStruct = videoCurrentGen(stack,time,xy,vB,fkB,Twin,Tstep,varargin)
-
-%dataStruct = videoCurrentGen(data, time, xy, vB, fkBounds, Twin, Tstep {,plotFlag})
+%
+% dataStruct = videoCurrentGen(data, time, xy, vB, fkBounds, Twin, Tstep {,plotFlag})
 %
 %  Returns current from video stacks at times in t
 %  by converting a block of the stack to f,ky space to find
@@ -29,14 +29,14 @@ function dataStruct = videoCurrentGen(stack,time,xy,vB,fkB,Twin,Tstep,varargin)
 %    QCspan - the 95th percentile minus the 50th percentile of the timestack
 %             histogram, used to measure the amount of video "texture"
 %    stdV - the width (std. dev.) of the energy in velocity spectrum
-%    vAngle - orientation of the pixel array (radians)
-%
+%    SNR - model guess at signal to noise ratio
 %
 %
 %  This code requires:
 %     Optimization Toolbox (lsqcurvefit.m)
 %     Statistics and Machine Learning Toolbox (nlparci.m)
 %     Signal Processing Toolbox (bartlett.m)
+%
 %% do some data checks to make sure data are input properly
 if length(time) ~= numel(time)
     error('time must be 1dimensional')
@@ -44,7 +44,7 @@ end
 if ~any(all(diff(xy)))
     error('one dimension of "xy" must be uniform spacing (eg y)')
 end
-if median(diff(time)) > 5e-5 & time(1) ~= 0
+if median(diff(time)) > 5e-5 && time(1) ~= 0
     error('time input must be seconds starting at zero')
 end
 
@@ -221,7 +221,7 @@ for wind = 0:(Nb-1)  % window
         wherestep = [num2str(wind + 1) ' of ' num2str(Nb)];
         fprintf(1,'	step %s		\r',wherestep);
     catch
-        warning('Nonlinear fit failed - skipping this record')
+        warning('Nonlinear fit failed - skipping this record, returning NaNs')
     end
 end
 warning on
