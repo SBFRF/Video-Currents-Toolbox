@@ -218,8 +218,8 @@ for wind = 0:(Nb-1)  % window
             end
         end
         j = j+1;
-        wherestep = [num2str(wind + 1) ' of ' num2str(Nb)];
-        fprintf(1,'	step %s		\r',wherestep);
+        %wherestep = [num2str(wind + 1) ' of ' num2str(Nb)];
+        %fprintf(1,'	step %s		\r',wherestep);
     catch
         warning('Nonlinear fit failed - skipping this record, returning NaNs')
     end

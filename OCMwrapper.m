@@ -65,8 +65,8 @@ data.y = data.y(sortIdxY);
 data.stack = data.stack(:,sortIdxY);
 % define output window and locations
 nWindowY = floor((max(data.y) - min(data.y))/dyWindow);  % how many output points in the alongshore
-outputYlocations = 600:dyOut:1000; %nWindowY*dyWindow;
-fprintf('using restricted ylocations of %d to %d\n', max(outputYlocations), min(outputYlocations));
+outputYlocations = parametersIn.outputYlocations; % 750:dyOut:950; %nWindowY*dyWindow;
+% fprintf('using restricted ylocations of %d to %d\n', max(outputYlocations), min(outputYlocations));
 pierWindow = [495, 520];  % bounds for the pier, will not process data in this window
 %% initalize output 
 nToutput = floor((size(data.time)-(Twin-Tstep))/Tstep); % number of timesteps for output
@@ -80,13 +80,21 @@ totalDataOut.prob = outDataDummy;
 totalDataOut.ci = outDataDummy;
 totalDataOut.cispan = outDataDummy;
 totalDataOut.SNR = outDataDummy;
+totalDataOut.meanI = outDataDummy;
+totalDataOut.QCspan = outDataDummy;
+totalDataOut.meanV = outDataDummy;
+totalDataOut.stdV = outDataDummy;
+totalDataOut.prob = outDataDummy;
+totalDataOut.ci =NaN(nToutput(2), 2, length(outputYlocations));
+totalDataOut.cispan = outDataDummy;
+totalDataOut.SNR = outDataDummy;
 %% loop each alongshore window
 for yy=1:length(outputYlocations)
     %% interpolate input to get constant alongshore spacing
     slush = 10; % extra data to ensure that interp has more than enough data 
     yminWindow = outputYlocations(yy) - dyWindow/2;  % output min window
     ymaxWindow = outputYlocations(yy) + dyWindow/2;  % output max window
-    fprintf('doing Alongshore location of yFRF = %d m\n', outputYlocations(yy));
+    %fprintf('processing Alongshore location of yFRF = %d m\n', outputYlocations(yy));
     % find the indicies of data of interest for stack and y coordinte
     idxYdataPre = find(data.y >= yminWindow - slush & data.y <=ymaxWindow + slush );
     % remove duplicates from y
@@ -128,9 +136,10 @@ for yy=1:length(outputYlocations)
             saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
         end
     end
-    xy = [yOutInterp(1,:)', yOutInterp(1,:)']; xy(:,1) = median(data.x);  % assume cross-shore position is always constant
-    timeStart = data.time(1);          % logging to shift output back to real time
-    timeIn = data.time - timeStart; % change starting point in time to zero
+    xy = [yOutInterp(1,:)', yOutInterp(1,:)'];
+    xy(:,1) = median(data.x);           % assume cross-shore position is always constant
+    timeStart = data.time(1);           % logging to shift output back to real time
+    timeIn = data.time - timeStart;     % change starting point in time to zero
     
     %% Run OCM code
     windowedDataOut = videoCurrentGen(stackNew, timeIn, xy, vB, ...
@@ -141,31 +150,46 @@ for yy=1:length(outputYlocations)
     if plotFlag && ~all(isnan(windowedDataOut.t))
         plotOCM(windowedDataOut, fnameOutBase, outputYlocations(yy)) % plot summary Data out for particular alongshore window
     end
-
     idxGoodData = ~isnan(windowedDataOut.t); % index of non-NaN'd data 
-    
+
     if any(idxGoodData)
-        totalDataOut.t(:, yy) = windowedDataOut.t(idxGoodData) + timeStart;  % reasign UTC time step
-        totalDataOut.y(yy) = outputYlocations(yy);                    % save the specific point i'm looking for 
-        totalDataOut.meanI(:, yy) = windowedDataOut.meanI(idxGoodData);
-        totalDataOut.QCspan(:, yy) = windowedDataOut.QCspan(idxGoodData);
-        totalDataOut.meanV(:, yy) = windowedDataOut.meanV(idxGoodData);
-        totalDataOut.stdV(:, yy) = windowedDataOut.stdV(idxGoodData);
-        totalDataOut.prob(:, yy) = windowedDataOut.prob(idxGoodData);
-        totalDataOut.ci(:, yy) = windowedDataOut.ci(idxGoodData);
-        totalDataOut.cispan(:, yy) = windowedDataOut.cispan(idxGoodData);
-        totalDataOut.SNR(:, yy) = windowedDataOut.SNR(idxGoodData);
+        totalDataOut.t(:, yy) = windowedDataOut.t + timeStart;  % reasign UTC time step, whole time stack will be same, let it overwrite
+        totalDataOut.y(yy) = outputYlocations(yy);                    % save the specific point i just processed 
+        totalDataOut.meanI(:, yy) = windowedDataOut.meanI;
+        totalDataOut.QCspan(:, yy) = windowedDataOut.QCspan;
+        totalDataOut.meanV(:, yy) = windowedDataOut.meanV;
+        totalDataOut.stdV(:, yy) = windowedDataOut.stdV;
+        totalDataOut.prob(:, yy) = windowedDataOut.prob;
+        totalDataOut.ci(:,:, yy) = windowedDataOut.ci;
+        totalDataOut.cispan(:, yy) = windowedDataOut.cispan;
+        totalDataOut.SNR(: , yy) = windowedDataOut.SNR;
         % save input data for comparisons later 
         totalDataOut.Raw.stack{yy} = stackNew;
-        totalDataOut.Raw.timeIn{yy} = timein;
+        totalDataOut.Raw.timeIn{yy} = timeIn;
         totalDataOut.Raw.xy{yy} = xy;
         totalDataOut.Raw.Twin{yy} = Twin;
         totalDataOut.Raw.Tstep{yy} = Tstep;
-        
+    else
+        totalDataOut.t(:,yy) = windowedDataOut.t + timeStart;   % reasign UTC time step -- will come out NaNs
+        totalDataOut.y(yy) = outputYlocations(yy);                    % save the specific point i'm looking for 
+        totalDataOut.meanI(:, yy) =  ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.QCspan(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.meanV(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.stdV(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.prob(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.ci(:, :, yy) =ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.cispan(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        totalDataOut.SNR(:, yy) = ones('like',windowedDataOut.t) * NaN;
+        % save input data for comparisons later 
+        totalDataOut.Raw.stack{yy} = stackNew;
+        totalDataOut.Raw.timeIn{yy} = timeIn;
+        totalDataOut.Raw.xy{yy} = xy;
+        totalDataOut.Raw.Twin{yy} = Twin;
+        totalDataOut.Raw.Tstep{yy} = Tstep;
     end
     
 end
-disp('remember to remove pier window data, if you change the outputYlocations')
+% disp('remember to remove pier window data, if you change the outputYlocations')
 
 end
 
