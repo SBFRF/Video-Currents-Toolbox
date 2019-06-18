@@ -116,13 +116,17 @@ for step in [256, 128, 64,32][::-1]:
                                 figsize=(12, 8)
                                 ##########################################################################################
                                 fig = plt.figure(figsize=figsize)
-                                fig.suptitle('Comparisons at xFRF={} yFRF={}\n tStep={} tWin={}, yStep={} yWin={}\nplotting only data with probility of Fit > {}'.format(xFRF, yFRF, step,win, dy, dyWin, probFitThreshold))
+                                fig.suptitle('Comparisons at xFRF={} yFRF={}\n tStep={} tWin={}, yStep={} yWin={}\np'
+                                             'lotting only data with probility of Fit > {} QCspan < {}'.format(xFRF, yFRF,
+                                                                           step,win, dy, dyWin, probFitThreshold, QCspan))
                                 ax0 = plt.subplot2grid((7, 8), (0,0), colspan=8, rowspan=2)
                                 ax0.plot(nc.num2date(epochTime, 'seconds since 1970-01-01'), measuredV, '.', label='ADV', ms=2)
                                 ax0.errorbar(nc.num2date(ocmT_plot, 'seconds since 1970-01-01'), meanV_plot, color2_plot.T, label='OCM', linestyle='', capsize=capsize, alpha=ebarAlpha)
                                 ax0.set_xlim([min(nc.num2date(ocmT_plot, 'seconds since 1970-01-01')), max(nc.num2date(ocmT_plot, 'seconds since 1970-01-01'))])
                                 ax0.set_ylabel('velocity $[m/s]$')
                                 ax0.legend()
+                                ax0.set_ylim([-4, 4])
+
 
                                 ax1 = plt.subplot2grid((7, 8), (2,0), colspan=4, rowspan=4)
                                 ax1.errorbar(measuredV_plot, meanV_plot, color2_plot.T, ms=ebarMarkerSize, mfc='Reds',
@@ -132,14 +136,19 @@ for step in [256, 128, 64,32][::-1]:
                                 cbar11.set_label(var1)
                                 ax1.plot([-2, 2], [-2, 2], '-k')
                                 ax1.set_ylabel('Ocm Velocity [m/s]')
+                                ax1.set_ylim([-4, 4])
+                                ax1.set_xlim([-4, 4])
 
                                 ax3 = plt.subplot2grid((7, 8), (2,4), colspan=4, rowspan=4)
                                 ax3.errorbar(measuredV_plot, meanV_plot, color2_plot.T, ms=ebarMarkerSize, mfc='Reds',
                                              label='OCM', linestyle='', capsize=capsize, elinewidth=ebarLineWidth, alpha=ebarAlpha)
-                                cbar3 = ax3.scatter(measuredV_plot, meanV_plot, c=color3_plot, alpha=myAlpha, cmap=myCmap, s=scatterMarkerSize, norm=matplotlib.colors.LogNorm() )
+                                cbar3 = ax3.scatter(measuredV_plot, meanV_plot, c=color4_plot, alpha=myAlpha, cmap=myCmap, s=scatterMarkerSize) #, norm=matplotlib.colors.LogNorm()
                                 cbar22 = plt.colorbar(cbar3)
-                                cbar22.set_label(var3)
+                                cbar22.set_label(var4)
                                 ax3.plot([-2, 2], [-2, 2], '-k')
+                                ax3.set_ylim([-4,4])
+                                ax3.set_xlim([-4,4])
+
                                 # ax3.set_ylabel('Ocm Velocity [m/s]')
 
                                 # do stats here below
