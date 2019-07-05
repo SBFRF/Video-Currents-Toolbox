@@ -6,7 +6,7 @@ function totalDataOut  = OCMwrapper(parametersIn, data)
 %       parametersIn (struct): must have fields of
 %           'dyWindow' -- alongshore window for stack, the width over which
 %               to average to get output point [m]
-%           'dyOut' -- alongshore spacing of output points [m]
+%           'dyOut' -- alongshore spacing of output points [m]  --- REMOVED dependency
 %           'dyInterpOut' -- interpolate the stack to this resolution [m]
 %           'vB'  -- velocity bounds see videoCurrentGen for description
 %           'fkB' -- frequency wave number bounds see videoCurrentGen for description
@@ -48,9 +48,9 @@ function totalDataOut  = OCMwrapper(parametersIn, data)
 %     Statistics and Machine Learning Toolbox (nlparci.m)
 %     Signal Processing Toolbox (bartlett.m)
 %
-%% Some preprocesssing stuff, not exactly sure yet what this is yet
+%% Some preprocesssing stuff, 
 % unpack input structures 
-dyOut = parametersIn.dyOut;
+% dyOut = parametersIn.dyOut;
 dyWindow = parametersIn.dyWindow;
 dyInterpOut = parametersIn.dyInterpOut;
 vB = parametersIn.vB;
@@ -141,7 +141,8 @@ for yy=1:length(outputYlocations)
     timeStart = data.time(1);           % logging to shift output back to real time
     timeIn = data.time - timeStart;     % change starting point in time to zero
     
-    %% Run OCM code
+    %% Run OCM codes
+    radonData = myRadonCurrent(stackNew, timeIn, xy(:,2), parametersIn) % Twin, Tstep, plotFlag);  %median(diff(timeIn)),dyInterpOut,dyWindow,stackNew);
     windowedDataOut = videoCurrentGen(stackNew, timeIn, xy, vB, ...
         fkB, Twin, Tstep, plotFlag);
     

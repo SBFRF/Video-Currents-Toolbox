@@ -1,6 +1,6 @@
 % load FRF Example file 
-load data/1458476940.Sun.Mar.20_12_29_00.GMT.2016.argus02b.cx.vbar200.mat
-
+load data/1507924740.Fri.Oct.13_19_59_00.GMT.2017.argus02b.cx.vbar200.mat
+%%% measured velocity (at y=945 x=300)  is -0.3191844 m/s
 dataIn.x= XYZ(:,1);     % parse out x Locations 
 dataIn.y = XYZ(:,2);    % parse out y Locations 
 dataIn.stack = RAW;     % parse out Timestack data 
@@ -43,9 +43,12 @@ param.vB = vB;
 param.fkB = fkB;
 param.Tstep = Tstep; 
 param.Twin = Twin; 
-param.plotFlag = plotFlag; 
+param.plotFlag = plotFlag;
+param.dyOut = 0.5; % m resolution for interpolation
+slop = param.dyOut; % generates 3 outputs at each gauge location (one north, one co-located, and one south)
+gaugeOutputLocs = [(860-slop):param.dyOut:(860+slop)];% (769-slop):param.dyOut:(769+slop) (945-slop):param.dyOut:(945+slop)];
+param.outputYlocations = gaugeOutputLocs;
 param.plotFnameBase = 'figures/base';
-
 myData = OCMwrapper(param, dataIn);
 %plot data
 time = datetime(myData.t(1,:), 'ConvertFrom', 'posixtime');
