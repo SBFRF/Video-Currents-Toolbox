@@ -1,6 +1,7 @@
-function totalDataOut  = OCMwrapper(parametersIn, data)
+function totalDataOut = OCMwrapper(parametersIn, data)
 % UNTITLED2 This fuction is a wrapper for video Current Gen to window in
-%   the alongshore direction
+%   the alongshore direction, will sort, interpolate, and section raw
+%   argus stack
 %
 %    INPUTS:
 %       parametersIn (struct): must have fields of
@@ -59,13 +60,7 @@ Tstep = parametersIn.Tstep;
 Twin = parametersIn.Twin; 
 plotFlag = parametersIn.plotFlag;
 fnameOutBase = parametersIn.plotFnameBase;
-% sort data (raw argus files are not alongshore sorted)
-[~, sortIdxY] = sort(data.y);
-data.y = data.y(sortIdxY);
-data.stack = data.stack(:,sortIdxY);
-% define output window and locations
-nWindowY = floor((max(data.y) - min(data.y))/dyWindow);  % how many output points in the alongshore
-outputYlocations = parametersIn.outputYlocations; % 750:dyOut:950; %nWindowY*dyWindow;
+outputYlocations = parametersIn.outputYlocations; 
 % fprintf('using restricted ylocations of %d to %d\n', max(outputYlocations), min(outputYlocations));
 pierWindow = [495, 520];  % bounds for the pier, will not process data in this window
 %% initalize output 
@@ -88,6 +83,13 @@ totalDataOut.prob = outDataDummy;
 totalDataOut.ci =NaN(nToutput(2), 2, length(outputYlocations));
 totalDataOut.cispan = outDataDummy;
 totalDataOut.SNR = outDataDummy;
+%% pre process for loop in alongshore
+% sort data (raw argus files are not alongshore sorted and unique)
+[data.y, sortIdxY, ~] = unique(data.y, 'sorted');
+data.stack = data.stack(:,sortIdxY);
+% data.y = data.y(sortIdxY);
+% define output window and locations
+% nWindowY = floor((max(data.y) - min(data.y))/dyWindow);  % how many output points in the alongshore
 %% loop each alongshore window
 for yy=1:length(outputYlocations)
     %% interpolate input to get constant alongshore spacing
@@ -96,13 +98,10 @@ for yy=1:length(outputYlocations)
     ymaxWindow = outputYlocations(yy) + dyWindow/2;  % output max window
     %fprintf('processing Alongshore location of yFRF = %d m\n', outputYlocations(yy));
     % find the indicies of data of interest for stack and y coordinte
-    idxYdataPre = find(data.y >= yminWindow - slush & data.y <=ymaxWindow + slush );
-    % remove duplicates from y
-    [yInInterp, idxYdata] = unique(data.y(idxYdataPre));
-    idxYdata = idxYdataPre(idxYdata);         % index of an index 
-    
+    idxYdata = find(data.y >= yminWindow - slush & data.y <=ymaxWindow + slush);
+
     % interpolate to constant alongshore spacing
-    [yInInterp, tIn] = meshgrid(yInInterp, data.time);      % don't interpolate in time
+    [yInInterp, tIn] = meshgrid(data.y(idxYdata), data.time);      % don't interpolate in time
     % opticalStack coordinates that I want to interpolate to
     yOutCoord = yminWindow:dyInterpOut:ymaxWindow;
     if any(yOutCoord < pierWindow(2)) && any(yOutCoord > pierWindow(1))
@@ -112,27 +111,43 @@ for yy=1:length(outputYlocations)
     end
 
     [yOutInterp, tOut] = meshgrid(yOutCoord, data.time);
-    % now interpolate 
-    stackNew = interp2(yInInterp, tIn, data.stack(:,idxYdata), yOutInterp, tOut);
-
-    if plotFlag  % plot data to see what interpolation did to data
-        figure();
-        sgtitle(sprintf('Output location yFRF %d m',  outputYlocations(yy)))
-        ax1 = subplot(311);
-        pcolor(data.y(idxYdataPre), data.time, data.stack(:, idxYdataPre));
-        shading flat; colormap gray; title('preUnique');
-        ax2 = subplot(312);
-        pcolor(data.y(idxYdata), data.time(:), data.stack(:, idxYdata));
-        shading flat; colormap gray; title('postUnique');
-        ax3 = subplot(313);
-        pcolor(yOutInterp, tOut, stackNew);
-        shading flat; colormap gray; title('postInterp');
+    % now interpolate and smooth
+    interpType = 'nearest'; 
+    stackNew = interp2(yInInterp, tIn, data.stack(:,idxYdata), yOutInterp, tOut, interpType);
+    stackNew = smoothdata(stackNew, 2, 'sgolay', 'degree', 10);
+    
+     if plotFlag  % plot data to see what interpolation did to data
+        plotTime = datenum(datetime(data.time, 'convertfrom', 'posixtime'));
+        figure('renderer', 'painters', 'position', [10, 10, 900, 1000]); 
+        sgtitle(sprintf('Output location yFRF %.2f m -- interp: %s',  outputYlocations(yy), interpType))
+        ax1 = subplot(6,6, [1:12]);
+        imagesc(data.y, plotTime, data.stack); 
+        shading flat; colormap gray; hold on
+        plot([data.y(idxYdata(1)), data.y(idxYdata(1))], [plotTime(1), plotTime(end)], 'k-', 'linewidth', 3)
+        plot([data.y(idxYdata(end)), data.y(idxYdata(end))], [plotTime(1), plotTime(end)], 'k-', 'linewidth', 3)
+        datetick('y', 13, 'keeplimits')
+        ylabel('time')
+        
+        ax2 = subplot(6,6, [13,14,15,19,20,21, 25,26,27,31,32,33]);
+        imagesc(data.y(idxYdata), plotTime, data.stack(:, idxYdata));
+        shading flat; colormap gray; title('Pre-interpolation'); hold on;
+        xlim([yOutCoord(1), yOutCoord(end)])
+        datetick('y', 13, 'keeplimits')
         xlabel('yFRF [m]')
-        linkaxes([ax1, ax2, ax3], 'x')
+        ylabel('time')
+
+        ax3 = subplot(6,6,[16,17,18,22,23,24,28,29,30,34,35,36] );
+        imagesc(yOutCoord, data.time, stackNew);
+        shading flat; colormap gray; title('Post-interpolation');
+        xlabel('yFRF [m]')
+        set(gca, 'ytick', [])
+        set(gca, 'yticklabel',[])
+        %linkaxes([ax1, ax2, ax3], 'x')
+        
         if isempty(fnameOutBase)
             close()
         else
-            fnameEnd = sprintf('_temporalWindow_y%dm.png',  outputYlocations(yy));
+            fnameEnd = sprintf('_temporalWindow_y%.2gm.png',  outputYlocations(yy));
             saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
         end
     end
@@ -142,9 +157,9 @@ for yy=1:length(outputYlocations)
     timeIn = data.time - timeStart;     % change starting point in time to zero
     
     %% Run OCM codes
-    radonData = myRadonCurrent(stackNew, timeIn, xy(:,2), parametersIn) % Twin, Tstep, plotFlag);  %median(diff(timeIn)),dyInterpOut,dyWindow,stackNew);
+    radonData = myRadonCurrent(stackNew, timeIn, xy(:,2), parametersIn); % Twin, Tstep, plotFlag);  %median(diff(timeIn)),dyInterpOut,dyWindow,stackNew);
     windowedDataOut = videoCurrentGen(stackNew, timeIn, xy, vB, ...
-        fkB, Twin, Tstep, plotFlag);
+        fkB, Twin, Tstep, plotFlag, fnameOutBase);
     
     %% save alongshore window out to larger output Structure
     % save data
@@ -152,7 +167,7 @@ for yy=1:length(outputYlocations)
         plotOCM(windowedDataOut, fnameOutBase, outputYlocations(yy)) % plot summary Data out for particular alongshore window
     end
     idxGoodData = ~isnan(windowedDataOut.t); % index of non-NaN'd data 
-
+    
     if any(idxGoodData)
         totalDataOut.t(:, yy) = windowedDataOut.t + timeStart;  % reasign UTC time step, whole time stack will be same, let it overwrite
         totalDataOut.y(yy) = outputYlocations(yy);                    % save the specific point i just processed 
@@ -170,6 +185,9 @@ for yy=1:length(outputYlocations)
         totalDataOut.Raw.xy{yy} = xy;
         totalDataOut.Raw.Twin{yy} = Twin;
         totalDataOut.Raw.Tstep{yy} = Tstep;
+        totalDataOut.radonV(:,yy) = radonData.v;
+        totalDataOut.radonT(:,yy) = radonData.time+timeStart;
+        
     else
         totalDataOut.t(:,yy) = windowedDataOut.t + timeStart;   % reasign UTC time step -- will come out NaNs
         totalDataOut.y(yy) = outputYlocations(yy);                    % save the specific point i'm looking for 
@@ -194,9 +212,15 @@ end
 
 end
 
-
-
 %%%%%%%%%%%%%%%%%%%%%%%%%
+% function plotImageToAnalyze(param, dataIn)
+% 
+%     figure()
+%     suplot(121)
+%     imshow(dataIn.stack/256)
+%     
+%     
+% end
 function plotOCM(dataOut, fnameOutBase, outputYlocation)
 % Plots OCM output into a five panel plot assumes output of:
 %   INPUT:
@@ -228,7 +252,7 @@ xlabel('time [s]')
 if isempty(fnameOutBase)
     close()
 else
-    fnameEnd = sprintf('_vBarTemporalOutput_y%dm.png',  outputYlocation);
+    fnameEnd = sprintf('_vBarTemporalOutput_y%.2gm.png',  outputYlocation);
     saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
 end
 end
