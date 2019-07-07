@@ -9,7 +9,6 @@ import netCDF4 as nc
 sys.path.append('/home/spike/repos')
 from testbedutils import sblib as sb
 from matplotlib import pyplot as plt
-import matplotlib
 
 #######################################################################
 
