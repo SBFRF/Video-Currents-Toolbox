@@ -10,8 +10,8 @@ function dataStruct = videoCurrentGen(stack,time,xy,vB,fkB,Twin,Tstep,varargin)
 %    time - time line (starting from zero) of stack, size [Mx1]  (matlab
 %           datetime format)
 %    xy - x,y position [Nx2] of each pixel in a dimension (should be equally spaced!)
-%    Twin - the time length of the FFT window (in points)
-%    Tstep - time length to step the window (in points)
+%    Twin - the time length of the FFT window (in pixels)
+%    Tstep - time length to step the window (in pixels)
 %    vB - [minV maxV], units m/s or vector of desired velocity steps, set this
 %      to empty, [], to use defaults [-3 3]
 %    fkBounds = [fmin fmax kmin kmax], vector of frequency and wavenumber bounds
@@ -52,13 +52,13 @@ end
 dt = abs(mean(diff(time)));
 % make local (to problem space/function) alongshore coordinate
 y = cumsum([0; 0; sqrt(sum(diff(xy).^2,2))]);
-vAngle = angle(diff(xy([1 end],:)).*[1 i]);
+% vAngle = angle(diff(xy([1 end],:)).*[1 i]);
 dy = abs(mean(diff(y)));
 N = size(stack,2);
 M = Twin;
 L = dy*N;
 T = dt*M;
-taper = bartlett(M)*bartlett(N)';
+taper = bartlett(M)*bartlett(N)';  % create taper window 
 if isempty(vB) % set the velocity bounds if empty
     vB = [-3 3];
 end
@@ -123,13 +123,13 @@ dataStruct.cispan = nan(1,Nb);
 dataStruct.SNR = nan(1,Nb);
 dataStruct.t = nan(1,Nb);
 
-for wind = 0:(Nb-1)  % window
+for wind = 0:(Nb-1)  % window Indices
     % window data and construct
-    cind = ((wind*Tstep)+1):((wind*Tstep)+Twin);
-    block = stack(cind,:);
+    cind = ((wind*Tstep)+1):(((wind*Tstep)+Twin));
+    block = stack(cind,:);      % this is the particular image window
     meanStack2 = mean(block(:));
     dataStruct.meanI(j) = meanStack2;
-    datastruct.stdI(j) = std(block(:));
+    dataStruct.stdI(j) = std(block(:));
     block = block-repmat(mean(block),Twin,1); %meanStack2; %remove mean from block
     
     % try another QC factor
@@ -179,38 +179,28 @@ for wind = 0:(Nb-1)  % window
         dataStruct.t(j) = mean(time(cind));
         if plotFlag
             clf
+            fig = figure('visible', 0);
             subplot(221)
-            imagesc(y,1:size(block,1)*dt,block)
-            hold on
-            ylabel('time (s)','fontsi',14)
-            xlabel('y position (m)','fontsi',14)
+            imagesc(y,1:size(block,1)*dt,block); hold on
+            ylabel('time (s)','fontsi',14); xlabel('y position (m)','fontsi',14)
             %plot([min(y) ],[])
             subplot(222)
-            imagesc(f,k,log10(abs(S')))
-            shading flat
-            xlabel('frequency (Hz)','fontsi',14),ylabel('wavenumber (1/m)','fontsi',14)
-            axis xy
-            axis([-abs(fkny(1)) abs(fkny(1)) 0 fkny(2)])
-            grid on
-            colorbar
+            imagesc(f,k,log10(abs(S'))); shading flat
+            xlabel('frequency (Hz)','fontsi',14); ylabel('wavenumber (1/m)','fontsi',14)
+            axis xy; axis([-abs(fkny(1)) abs(fkny(1)) 0 fkny(2)]); grid on; colorbar
             subplot(223)
-            imagesc(v,k,log10(abs(Sv')))
-            shading flat
-            colorbar
-            xlabel('velocity (m/s)','fontsi',14),ylabel('wavenumber (1/m)','fontsi',14)
-            axis xy
-            axis([min(jv) max(jv) 0 fkny(2)])
-            grid on
+            imagesc(v,k,log10(abs(Sv'))); shading flat; colorbar
+            xlabel('velocity (m/s)','fontsi',14);ylabel('wavenumber (1/m)','fontsi',14)
+            axis xy; axis([min(jv) max(jv) 0 fkny(2)]); grid on
             subplot(224)
             plot(v,V,'linew',1) %semilogy(v,V,'linew',1)
             xlabel('velocity (m/s)','fontsi',14),ylabel('wavenumber (1/m)','fontsi',14)
-            hold on
-            plot(v(gind),fitted,'r--','linew',2)
+            hold on; plot(v(gind),fitted,'r--','linew',2)
             plot([0 0]+dataStruct.meanV(j),[0 1],'k','linew',2)
             plot([-1 1;-1 1]*dataStruct.stdV(j)+dataStruct.meanV(j),[0 0;1 1],'--k','linew',1)
-            title(dataStruct.meanV(j))
-            grid on
-            legend('S(v)','S_{model}(v)')
+            title(dataStruct.meanV(j)); grid on; legend('S(v)','S_{model}(v)')
+            saveas(fig, join([varargin{2} '_OCM_output_y' string(round(median(xy(:,2)))) 'm_t' string(round(dataStruct.t(j))) 's.png'],''))
+            close();
             if plotFlag == 2
                 pause
             else
