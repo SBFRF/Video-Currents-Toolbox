@@ -1,10 +1,10 @@
 % RadonCurrent_20141129.m
-function [CRadmoy]=myRadonCurrent(In, timeIn, y, parametersIn)
+function [outStruct]=myRadonCurrent(In, timeIn, y, parametersIn)
 %Inputs%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %   In: input stack (nt, nx)
 %   timeIn: time input (seconds since start of stack) .. ie (0..2048)
 %   xy: x and y pixal locations of data of stack (size=(nx,2))
-%   tWin: temporal window to do analysis over 
+%   tWin: temporal window to do analysis over (in pixel points)
 %   tStep: temporal step to include (not currently used)
 %   varargin: plotting 1 = true, 0 = false 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -28,18 +28,20 @@ function [CRadmoy]=myRadonCurrent(In, timeIn, y, parametersIn)
 %%
 plotFlag = parametersIn.plotFlag;
 fnameOutBase = parametersIn.plotFnameBase;
-tStep = parametersIn.Tstep;
-tWin = parametersIn.Twin;
-
-%pdx: Spatial resolution degradation (in point)  -- sub sampling 
-pdx=1;
-dx = median(diff(y));  % calculate the pixel size in size over ground [m]
-%freq_x : spatial frequency (1/dx)
-freq_x = 1./(dx.*pdx);  %(here 2 pixel/m)
-%Wx: Window size in space for Radon computation (sensity test : better if WX > 10)
-Wx = abs(y(1) - y(end));  % alongshore window size in meters
-% 2nd: time -- time of input
 dt = median(diff(timeIn));
+tStep = parametersIn.Tstep;
+tWin = parametersIn.Twin * dt;
+radialFilterThresh = parametersIn.radialFilterThresh;
+%pdx: Spatial resolution degradation (in pixel points) -- sub sampling of image 
+pdx=1;
+dx = median(diff(y));      % calculate the pixel size in size over ground [m]
+%freq_x : spatial frequency (1/dx)
+freq_x = 1./(dx.*pdx);                %(here 2 pixel/m)
+%Wx: Window size in space for Radon computation (sensity test : better if WX > 10)
+Wx = abs(y(1) - y(end))/dx;           % alongshore window size in pixels
+% number of points to remove points longer than from radon transform
+
+
 %pdt: Temporal resolution degradation (in point)
 pdt=1;
 %freq_t : temporal frequency (1/dt) (taking into account for pdt)
@@ -48,13 +50,19 @@ freq_t = 1./dt;  %
 iang=1:1:180;  % define angular resolution
 disp('need to incorporate tstep, right now operates as 0% overlap')
 % this subsamples in x and t (as defined above by pdx, pdt)
-M=In(1:pdt:length(In(:,1)),1:pdx:length(In(1,:)));
+M=In(1:pdt:length(In(:,1)), 1:pdx:length(In(1,:)));
 clear Mat VER XHFR an Tim Hx Hm C CC2 Tan
-
+%% initalize and loop
+NWindows = ceil((size(squeeze(timeIn),2)-(tWin+1))/tWin);
+CRadmoy = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
+QCspan = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
+meanIntensity = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
+stdIntensity = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
+rc = 1; % record counter 
 for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
-    for ix=Wx+1:Wx:size(M,2)-(Wx+1)       % loop on x positions
+%     for ix=Wx:Wx:size(M,2)-(Wx+1)                % loop on x positions
        
-        MR=M(tt:tt+tWin, ix-Wx:ix+Wx);                      % window selection
+        MR=M(tt:tt+tWin, :); % ix-Wx:ix+Wx);                      % window selection
         %     try
         %      
         %     catch
@@ -84,25 +92,8 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         %
         nt=size(MR,1);
         [R, Xp] =radon(detrend(double(MR'))', iang); % radon transform
-        if plotFlag == 1  % make plot for QA/QC to see what's happening with transform 
-            figure('Renderer', 'painters', 'Position', [10 10 1500 500]);  clf;
-            subplot(131)
-            imshow(MR/256);ylabel('time'); xlabel('pixels alongshore')
-            subplot(132)
-            pcolor(iang, Xp, R); shading flat; ylabel('radial distance');
-            xlabel('angle'); colorbar()
-            subplot(133)
-            plot(iang, sum(R,1)); xlabel('angle'); ylabel('integrated radial concentration')
 
-            if isempty(fnameOutBase)
-                pause
-                close()
-            else
-                fnameEnd = sprintf('_RadonTransformQAQC_%ds_%dm.png', tt, ix*Wx);
-                saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
-            end
-        end
-        tr=abs(cosd(90:270));
+        %tr=abs(cosd(90:270));
         nr=size(R,1);
         amp=nr/nt;
         
@@ -111,23 +102,49 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         trk=floor((size(MR,1))/2)-floor((0*cosd(iang) + ((size(MR,1))/2-k*amp)*sind(iang)));
         trk=trk-min(trk);
         res=(nt*dt)./(trk.*2);
-        
+        % Filter with radial threshold
         R2=R;
         for i=iang
             try
-                R2(:,i)=R(:,i)-smooth(R(:,i),round(1+20./(res(i))));
+                R2(:,i)=R(:,i) - smooth(R(:,i),round(1+radialFilterThresh./(res(i))));
             catch
-                R2(:,i)=R(:,i)-movmean(R(:,i),round(1+20./(res(i))));
+                R2(:,i) = R(:,i) - movmean(R(:,i), round(1+radialFilterThresh./(res(i))));
             end
 
         end
-        
-        [frd, a2] = max(std(R2(round(size(R2,1)/4:3*size(R2,1)./4),:)));  %mean celerity calculation
+        AngPixlIntensDensity = std(R2(round(size(R2,1)/4:3*size(R2,1)./4),:));
+        [frd, a2] = max(AngPixlIntensDensity);  % mean celerity calculation
         
         if length(freq_x)==1
             C2=(1/mean(freq_x))/(tand(90-a2)*(1/mean(freq_t)));   % mean celerity
         else
-            C2=(1/mean(freq_x(ix-Wx:ix+Wx)))/(tand(90-a2)*(1/mean(freq_t)));% mean celerity
+%             C2=(1/mean(freq_x(ix-Wx:ix+Wx)))/(tand(90-a2)*(1/mean(freq_t))); % mean celerity
+            pause % this needs to be checked, as it was modified after removing alongshore windowing
+            C2=(1/mean(freq_x(:)))/(tand(90-a2)*(1/mean(freq_t))); % mean celerity  This ne
+        end
+        
+        if plotFlag == 1  % make plot for QA/QC to see what's happening with transform
+            if isempty(fnameOutBase); visible=1; else; visible=0; end
+            figure('Renderer', 'painters', 'Position', [10 10 1500 500], 'visible',visible);  clf;
+            ax1 = subplot(4, 2, [1,3,5,7]);
+            imagesc(MR);ylabel('time'); xlabel('pixels alongshore');% colormap(ax1, gray); 
+            title('Raw image stack')
+            ax2 = subplot(4,2, [4,6,8]);
+            pcolor(iang, Xp, R2); shading flat; ylabel('radial distance');
+            xlabel('angle'); colorbar(); %colormap(ax2, winter)
+            title('filtered radon transform')
+            subplot(4,2,2)
+            plot(iang, AngPixlIntensDensity); 
+            title('Angular Pixel intensity density')
+            text(0.05,0.85,join(['velocity: ', string(C2), 'm/s']),'Units','normalized')
+
+            if isempty(fnameOutBase)
+                pause
+                close()
+            else
+                fnameEnd = sprintf('_RadonTransformQAQC_%ds_%gyFRF.png', tt, median(y)); % ix*Wx);
+                saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
+            end
         end
         %calculate celerity wave to wave
         % figure(16);clf;pcolor(R);shading flat; hold on;
@@ -135,7 +152,7 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         %      try
         %
         % % hold on;plot(1:length(trk),trk,'k')
-        % vag=[];
+        % vag=[];tt:tt+tWin, :)
         % for i=-5:5 % we take the results on the points around for less noise
         %      try
         %     vag=[vag smooth(smooth(diag(R(trk(ang)+i,ang)),3),10)];
@@ -152,7 +169,7 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         % [frd g11]=max(vec(a2/res-10/res:min([a2/res+10/res length(vec)])));g11=g11+(a2-10)/res;
         % g11=g11*res+1;
         %
-        % % figure(39);clf;pcolor(vag');shading flat;axis equal%caxis([-160 160]);
+        % % figure(39);clf;pcolor(vag');shadintimeIn(1:tWin:size(squeeze(timeIn),2)-(tWin+1))g flat;axis equal%caxis([-160 160]);
         % % hold on;plot(g11,5,'ko')
         % % pause
         % %
@@ -180,12 +197,22 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         %  mean(VELHF(:,ix)) % celerity data
         
         %  [Tok indok]=sort(XHF(:,ix));
-        % figure(378);clf
+        % figure(378)Wx+1:Wx:size(M,2)-(Wx+1);clf
         % plot(Tan(ix,:),an(ix,:),'k');hold on;plot(Tok,VELHF(indok,ix),'r')
         % pause
         
-        CRadmoy(ix, tt)=C2; % mean celerity
-    end
+        CRadmoy(rc)=C2; % mean celerity
+        meanIntensity(rc) = mean(MR(:));
+        stdIntensity(rc) = std(MR(:));
+        p95 = prctile(MR(:),[95 50]);
+        QCspan(rc) = p95(1) - p95(2);
+        time(rc) = mean(timeIn(tt:tt+tWin));
+        rc=rc+1;  % save 
 end
 % interpolate output before returning
-CRadmoy=interp1(pdx.*(Wx+1:Wx:size(M,2)-(Wx+1)), CRadmoy(Wx+1:Wx:size(M,2)-(Wx+1)), 1:size(In,2));
+outStruct.v = CRadmoy;  % interp1(pdx.*(Wx+1:Wx:size(M,2)-(Wx+1)), CRadmoy(%Wx+1:Wx:size(M,2)-(Wx+1):), 1:size(In,2)); 
+outStruct.time = time;
+outStruct.stdI = stdIntensity;
+outStruct.QCspan = QCspan;
+outStruct.meanI = meanIntensity;
+end
