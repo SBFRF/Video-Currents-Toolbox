@@ -7,7 +7,7 @@ function totalDataOut = OCMwrapper(parametersIn, data)
 %       parametersIn (struct): must have fields of
 %           'dyWindow' -- alongshore window for stack, the width over which
 %               to average to get output point [m]
-%           'dyOut' -- alongshore spacing of output points [m]  --- REMOVED dependency
+%           'outputYlocations' -- alongshore locations of output points [m]
 %           'dyInterpOut' -- interpolate the stack to this resolution [m]
 %           'vB'  -- velocity bounds see videoCurrentGen for description
 %           'fkB' -- frequency wave number bounds see videoCurrentGen for description
@@ -114,9 +114,9 @@ for yy=1:length(outputYlocations)
     % now interpolate and smooth
     interpType = 'nearest'; 
     stackNew = interp2(yInInterp, tIn, data.stack(:,idxYdata), yOutInterp, tOut, interpType);
-    stackNew = smoothdata(stackNew, 2, 'sgolay', 'degree', 10);
+%     stackNew = smoothdata(stackNew, 2, 'sgolay', 'degree', 10);
     
-     if plotFlag  % plot data to see what interpolation did to data
+     if plotFlag  % plot data to see what interflist = glob('data/*200*.mat')polation did to data
         plotTime = datenum(datetime(data.time, 'convertfrom', 'posixtime'));
         figure('renderer', 'painters', 'position', [10, 10, 900, 1000]); 
         sgtitle(sprintf('Output location yFRF %.2f m -- interp: %s',  outputYlocations(yy), interpType))
@@ -147,8 +147,9 @@ for yy=1:length(outputYlocations)
         if isempty(fnameOutBase)
             close()
         else
-            fnameEnd = sprintf('_temporalWindow_y%.2gm.png',  outputYlocations(yy));
-            saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
+            fnameEnd = sprintf('_ImageStackWindow_y%.2gm.png',  outputYlocations(yy));
+            set(gcf, 'PaperPositionMode', 'auto');
+            print(strcat(fnameOutBase, fnameEnd), '-dpng'); close();
         end
     end
     xy = [yOutInterp(1,:)', yOutInterp(1,:)'];
@@ -157,9 +158,16 @@ for yy=1:length(outputYlocations)
     timeIn = data.time - timeStart;     % change starting point in time to zero
     
     %% Run OCM codes
-    radonData = myRadonCurrent(stackNew, timeIn, xy(:,2), parametersIn); % Twin, Tstep, plotFlag);  %median(diff(timeIn)),dyInterpOut,dyWindow,stackNew);
+    for rr = 1:length(parametersIn.radialFilterThresh)
+        myIn.plotFlag = parametersIn.plotFlag;
+        myIn.plotFnameBase = parametersIn.plotFnameBase;
+        myIn.radialFilterThresh = parametersIn.radialFilterThresh(rr);
+        myIn.Twin = parametersIn.Twin;
+        radonData(rr) = myRadonCurrent(stackNew, timeIn, xy(:,2), myIn); 
+    end
     windowedDataOut = videoCurrentGen(stackNew, timeIn, xy, vB, ...
         fkB, Twin, Tstep, plotFlag, fnameOutBase);
+    
     
     %% save alongshore window out to larger output Structure
     % save data
@@ -180,13 +188,12 @@ for yy=1:length(outputYlocations)
         totalDataOut.cispan(:, yy) = windowedDataOut.cispan;
         totalDataOut.SNR(: , yy) = windowedDataOut.SNR;
         % save input data for comparisons later 
-        totalDataOut.Raw.stack{yy} = stackNew;
+%         totalDataOut.Raw.stack{yy} = stackNew;
         totalDataOut.Raw.timeIn{yy} = timeIn;
         totalDataOut.Raw.xy{yy} = xy;
         totalDataOut.Raw.Twin{yy} = Twin;
         totalDataOut.Raw.Tstep{yy} = Tstep;
-        totalDataOut.radonV(:,yy) = radonData.v;
-        totalDataOut.radonT(:,yy) = radonData.time+timeStart;
+        totalDataOut.radonData(:,yy) = radonData;
         
     else
         totalDataOut.t(:,yy) = windowedDataOut.t + timeStart;   % reasign UTC time step -- will come out NaNs
@@ -200,7 +207,7 @@ for yy=1:length(outputYlocations)
         totalDataOut.cispan(:, yy) = ones('like',windowedDataOut.t) * NaN;
         totalDataOut.SNR(:, yy) = ones('like',windowedDataOut.t) * NaN;
         % save input data for comparisons later 
-        totalDataOut.Raw.stack{yy} = stackNew;
+%         totalDataOut.Raw.stack{yy} = stackNew;
         totalDataOut.Raw.timeIn{yy} = timeIn;
         totalDataOut.Raw.xy{yy} = xy;
         totalDataOut.Raw.Twin{yy} = Twin;
@@ -253,6 +260,7 @@ if isempty(fnameOutBase)
     close()
 else
     fnameEnd = sprintf('_vBarTemporalOutput_y%.2gm.png',  outputYlocation);
-    saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
+    set(gcf, 'PaperPositionMode', 'auto');
+    print(strcat(fnameOutBase, fnameEnd), '-dpng'); close();
 end
 end

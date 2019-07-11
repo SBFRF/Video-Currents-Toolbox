@@ -129,8 +129,8 @@ for wind = 0:(Nb-1)  % window Indices
     block = stack(cind,:);      % this is the particular image window
     meanStack2 = mean(block(:));
     dataStruct.meanI(j) = meanStack2;
-    dataStruct.stdI(j) = std(block(:));
-    block = block-repmat(mean(block),Twin,1); %meanStack2; %remove mean from block
+%     dataStruct.stdI(j) = std(double(block(:)));
+    block = double(block)-repmat(mean(block),Twin,1); %meanStack2; %remove mean from block
     
     % try another QC factor
     p95 = prctile(block(:),[95 50]);
