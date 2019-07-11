@@ -25,13 +25,24 @@ function [outStruct]=myRadonCurrent(In, timeIn, y, parametersIn)
 % Tim: peaks detected for calculating the clerity
 % C: peaks of detected crests
 %Outputs%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%
-plotFlag = parametersIn.plotFlag;
-fnameOutBase = parametersIn.plotFnameBase;
+%% parse parameters in structure
+if isfield(parametersIn, 'plotFlag')
+    plotFlag = parametersIn.plotFlag;
+else
+    plotFlag = 0;
+end
+if plotFlag == 1 && isfield(parametersIn, 'plotFnameBase')
+    fnameOutBase = 'radonOCMout';
+end
+if isfield(parametersIn, 'radialFilterThresh')
+    radialFilterThresh = parametersIn.radialFilterThresh;
+else
+    radialFilterThresh = 20;
+end 
+%% 
 dt = median(diff(timeIn));
-tStep = parametersIn.Tstep;
-tWin = parametersIn.Twin * dt;
-radialFilterThresh = parametersIn.radialFilterThresh;
+% tStep = parametersIn.Tstep;
+tWin = parametersIn.Twin * round(dt,1);
 %pdx: Spatial resolution degradation (in pixel points) -- sub sampling of image 
 pdx=1;
 dx = median(diff(y));      % calculate the pixel size in size over ground [m]
@@ -48,7 +59,7 @@ pdt=1;
 freq_t = 1./dt;  %
 %Wt: window size in time for Radon computation (in sec) %Wt=30;
 iang=1:1:180;  % define angular resolution
-disp('need to incorporate tstep, right now operates as 0% overlap')
+warning('need to incorporate tstep, right now operates as 0% overlap')
 % this subsamples in x and t (as defined above by pdx, pdt)
 M=In(1:pdt:length(In(:,1)), 1:pdx:length(In(1,:)));
 clear Mat VER XHFR an Tim Hx Hm C CC2 Tan
@@ -58,6 +69,7 @@ CRadmoy = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
 QCspan = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
 meanIntensity = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
 stdIntensity = zeros(NWindows, 1);  % , (size(M,2)-(Wx+1)));
+angPixIdens = zeros(NWindows, 180);
 rc = 1; % record counter 
 for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
 %     for ix=Wx:Wx:size(M,2)-(Wx+1)                % loop on x positions
@@ -126,24 +138,32 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         if plotFlag == 1  % make plot for QA/QC to see what's happening with transform
             if isempty(fnameOutBase); visible=1; else; visible=0; end
             figure('Renderer', 'painters', 'Position', [10 10 1500 500], 'visible',visible);  clf;
-            ax1 = subplot(4, 2, [1,3,5,7]);
-            imagesc(MR);ylabel('time'); xlabel('pixels alongshore');% colormap(ax1, gray); 
+            ax1 = subplot(4, 3, [1,4,7,10]);
+            imagesc(y, timeIn(tt:tt+tWin), MR);ylabel('time'); xlabel('Alongshore [m]');% colormap(ax1, gray);           
+            colorbar()
             title('Raw image stack')
-            ax2 = subplot(4,2, [4,6,8]);
-            pcolor(iang, Xp, R2); shading flat; ylabel('radial distance');
-            xlabel('angle'); colorbar(); %colormap(ax2, winter)
-            title('filtered radon transform')
-            subplot(4,2,2)
+            
+            ax2 = subplot(4,3, [2,5,8,11]);
+            IR = iradon(R2, iang);
+            imagesc(y, timeIn(tt:tWin), IR);ylabel('time'); xlabel('Alongshore [m]');% colormap(ax1, gray); 
+            ylim([700-tWin/2, 700+tWin/2]);
+            title('Filtered image stack'); colorbar();
+
+            subplot(4,3,3)
             plot(iang, AngPixlIntensDensity); 
             title('Angular Pixel intensity density')
             text(0.05,0.85,join(['velocity: ', string(C2), 'm/s']),'Units','normalized')
-
+            ax4 = subplot(4,3, [6, 9, 12]);
+            imagesc(iang, Xp, R2); shading flat; ylabel('radial distance');
+            xlabel('angle'); colorbar(); %colormap(ax2, winter)
+            title('filtered radon transform')
             if isempty(fnameOutBase)
                 pause
                 close()
             else
                 fnameEnd = sprintf('_RadonTransformQAQC_%ds_%gyFRF.png', tt, median(y)); % ix*Wx);
-                saveas(gcf, strcat(fnameOutBase, fnameEnd)); close();
+                set(gcf, 'PaperPositionMode', 'auto');
+                print(strcat(fnameOutBase, fnameEnd), '-dpng'); close();
             end
         end
         %calculate celerity wave to wave
@@ -203,10 +223,11 @@ for tt = 1:tWin:size(squeeze(timeIn),2)-(tWin+1)   % loop on time window
         
         CRadmoy(rc)=C2; % mean celerity
         meanIntensity(rc) = mean(MR(:));
-        stdIntensity(rc) = std(MR(:));
+        stdIntensity(rc) = std(double(MR(:)));
         p95 = prctile(MR(:),[95 50]);
         QCspan(rc) = p95(1) - p95(2);
         time(rc) = mean(timeIn(tt:tt+tWin));
+        angPixIdens(rc, :) = AngPixlIntensDensity;
         rc=rc+1;  % save 
 end
 % interpolate output before returning
@@ -215,4 +236,6 @@ outStruct.time = time;
 outStruct.stdI = stdIntensity;
 outStruct.QCspan = QCspan;
 outStruct.meanI = meanIntensity;
+outStruct.AngPixlIntensDensity = angPixIdens;
+outStruct.radialFilterThresh = radialFilterThresh;
 end
