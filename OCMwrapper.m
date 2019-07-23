@@ -47,7 +47,8 @@ function totalDataOut = OCMwrapper(parametersIn, data)
 %  This code requires:
 %     Optimization Toolbox (lsqcurvefit.m)
 %     Statistics and Machine Learning Toolbox (nlparci.m)
-%     Signal Processing Toolbox (bartlett.m)
+%     Signal Processing Toolbox (bartlett.m) 
+%     Trying to reduce requirements
 %
 %% Some preprocesssing stuff, 
 % unpack input structures 
